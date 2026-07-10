@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ナガレボシ｜曜日・時間帯別レポート</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="viz-root">
+
+<header class="page-header">
+  <h1>曜日・時間帯別 広告パフォーマンス</h1>
+  <p class="period" id="period"></p>
+  <p class="source-note">データソース: 20260520-0709.xlsx（キャンペーン レポート）</p>
+</header>
+
+<main>
+
+  <!-- KPI（期間合計） -->
+  <section class="kpi-row" id="kpiRow" aria-label="期間合計サマリー"></section>
+
+  <!-- フィルター行 -->
+  <div class="controls-row">
+    <div class="metric-switch" id="metricSwitch" role="tablist" aria-label="指標の切り替え"></div>
+    <label class="norm-toggle" id="normToggle">
+      <input type="checkbox" id="normCheck">
+      <span>1日あたり平均で表示<small>（水・木曜のみ8日間のため補正）</small></span>
+    </label>
+  </div>
+
+  <!-- ヒートマップ -->
+  <section class="card">
+    <h2 id="heatmapTitle"></h2>
+    <p class="card-sub">セルにカーソルを合わせると全指標が確認できます</p>
+    <div class="chart-scroll"><div id="heatmap"></div></div>
+    <div class="heat-legend" id="heatLegend"></div>
+  </section>
+
+  <div class="two-col">
+    <!-- 時間帯別 -->
+    <section class="card">
+      <h2 id="hourlyTitle"></h2>
+      <p class="card-sub">全曜日の合計を時間帯別に集計</p>
+      <div id="hourlyChart"></div>
+    </section>
+
+    <!-- 曜日別 -->
+    <section class="card">
+      <h2 id="dailyTitle"></h2>
+      <p class="card-sub" id="dailySub">全時間帯の合計を曜日別に集計</p>
+      <div id="dailyChart"></div>
+    </section>
+  </div>
+
+  <div class="two-col">
+    <!-- CV内訳 -->
+    <section class="card">
+      <h2>コンバージョン内訳（主要アクション）</h2>
+      <p class="card-sub">レポートの内訳列より。合計CVにはscroll_depth等のマイクロCVも含まれるため、内訳の合計とは一致しません</p>
+      <div id="cvChart"></div>
+    </section>
+
+    <!-- 気づき（データから自動生成） -->
+    <section class="card insights">
+      <h2>主な気づき（自動生成）</h2>
+      <ul id="insightsList"></ul>
+    </section>
+  </div>
+
+  <!-- データ表 -->
+  <details class="table-details">
+    <summary>全データ表を表示（曜日×時間帯 168行）</summary>
+    <div class="table-wrap">
+      <table id="dataTable"></table>
+    </div>
+  </details>
+
+</main>
+
+<div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
