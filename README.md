@@ -3,6 +3,15 @@
 Google Ads の「曜日 × 時間帯」レポート（Excel/CSV）を、ブラウザでグラフとして見られるようにするツールです。
 インターネット接続やサーバーは不要で、**`index.html` をダブルクリックするだけ**で開けます。
 
+## 公開先（2026年7月10日時点）
+
+| | URL |
+|---|---|
+| 公開ページ（誰でも閲覧可） | https://yuimon.github.io/ads-time-dashboard/ |
+| リポジトリ | https://github.com/yuimon/ads-time-dashboard |
+
+このフォルダ自体がGitリポジトリになっており、`git push` すると1〜2分で公開ページに反映されます。
+
 ## ファイル構成
 
 | ファイル | 役割 |
@@ -62,6 +71,20 @@ python make_data.py "..\20260520-0709.xlsx"
 
 `index.html` を開き直す（開いていれば再読み込み）だけで、新しいデータが反映されます。
 
+### 4. 公開版（GitHub Pages）に反映する
+
+ローカルで確認できたら、このフォルダで次の3コマンドを実行すると公開ページも更新されます。
+（Claude Codeに「ダッシュボードのデータを更新してGitHubに反映して」と頼んでもOK）
+
+```
+git add data.js
+git commit -m "データ更新"
+git push
+```
+
+プッシュから1〜2分で https://yuimon.github.io/ads-time-dashboard/ に反映されます。
+開いても古いままのときはブラウザのキャッシュなので、Ctrl+F5 で強制再読み込みしてください。
+
 ## 注意事項
 
 - 「コンバージョン」列には scroll_depth などのマイクロCVが含まれる場合があり、
@@ -72,7 +95,25 @@ python make_data.py "..\20260520-0709.xlsx"
 - `make_data.py` の実行には Python と openpyxl が必要です（CSVならopenpyxl不要）。
   入っていない場合: `pip install openpyxl`
 
-## 別フォルダに複製して使う
+## 別案件・別データ用に新しいダッシュボードを作って公開する
 
 このフォルダごとコピーすれば、別案件・別期間のダッシュボードを並行して持てます。
-コピー先で `make_data.py` を実行してデータだけ差し替えてください。
+コピー先で `make_data.py` を実行してデータだけ差し替えれば、ローカル閲覧はそれで完了です。
+
+コピーした方も誰でも見られるように公開したい場合は、コピー先のフォルダで以下を実行します
+（リポジトリ名は案件が分かる英数字に置き換える。例: `xxx-dashboard`）:
+
+```
+git init -b main
+git add index.html style.css app.js data.js make_data.py README.md
+git commit -m "ダッシュボードを公開"
+gh repo create リポジトリ名 --public --source . --remote origin --push
+gh api -X POST repos/yuimon/リポジトリ名/pages -f "source[branch]=main" -f "source[path]=/"
+```
+
+公開URLは `https://yuimon.github.io/リポジトリ名/` になります。
+
+**注意**: 公開リポジトリなので、ページだけでなくデータ（広告費・CV数）やコードも
+誰でも閲覧できる状態になります。公開してよいデータか確認してから実行してください。
+コマンドが不安な場合は、Claude Codeに「このフォルダを新しいダッシュボードとして
+GitHubで公開して」と頼めば同じ手順を実行してくれます。
