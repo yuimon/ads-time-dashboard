@@ -12,14 +12,25 @@ DAYS.forEach(d => { cell[d] = {}; });
 RAW.rows.forEach(r => { cell[r.day][r.hour] = r; });
 
 function sumCells(list) {
-  const a = { imp: 0, clicks: 0, cost: 0, conv: 0 };
-  list.forEach(r => { a.imp += r.imp; a.clicks += r.clicks; a.cost += r.cost; a.conv += r.conv; });
+  const a = { imp: 0, clicks: 0, cost: 0, conv: 0, actions: {} };
+  list.forEach(r => {
+    a.imp += r.imp; a.clicks += r.clicks; a.cost += r.cost; a.conv += r.conv;
+    Object.entries(r.actions || {}).forEach(([k, v]) => { a.actions[k] = (a.actions[k] || 0) + v; });
+  });
   return a;
 }
 const TOTAL = sumCells(RAW.rows);
 const hourAgg = HOURS.map(h => sumCells(RAW.rows.filter(r => r.hour === h)));
 const dayAgg = {};
 DAYS.forEach(d => { dayAgg[d] = sumCells(RAW.rows.filter(r => r.day === d)); });
+
+/* ================= CVアクション（内訳）================= */
+const ACTION_LABEL = k => k.replace(/（Lad追加金額）|（Lad）|（アフピル）/g, '');
+// 期間合計が0より大きいアクションのみ、多い順に
+const ACTIONS = Object.entries(TOTAL.actions)
+  .filter(([, v]) => v > 0)
+  .sort((a, b) => b[1] - a[1])
+  .map(([k]) => k);
 
 /* ================= 指標定義 ================= */
 const fmtInt = v => Math.round(v).toLocaleString('ja-JP');
@@ -44,17 +55,24 @@ const METRICS = {
   cpa:    { label: 'CPA',  sum: false, fmt: fmtYen, axis: fmtCompact },
 };
 
+// CVアクションで絞り込み中はそのアクションの値、未選択なら合計CV
+const convOf = a => (state.action ? (a.actions && a.actions[state.action]) || 0 : a.conv);
+const CV_METRICS = new Set(['conv', 'cvr', 'cpa']);
+// 絞り込み中はCV系指標のラベルにアクション名を付ける
+const metricLabel = key => METRICS[key].label +
+  (state.action && CV_METRICS.has(key) ? `（${ACTION_LABEL(state.action)}）` : '');
+
 // 集計オブジェクト→指標値（率系は合計から再計算。分母0はnull）
 function metricOf(a, key) {
   switch (key) {
     case 'imp': return a.imp;
     case 'clicks': return a.clicks;
     case 'cost': return a.cost;
-    case 'conv': return a.conv;
+    case 'conv': return convOf(a);
     case 'ctr': return a.imp > 0 ? a.clicks / a.imp * 100 : null;
     case 'cpc': return a.clicks > 0 ? a.cost / a.clicks : null;
-    case 'cvr': return a.clicks > 0 ? a.conv / a.clicks * 100 : null;
-    case 'cpa': return a.conv > 0 ? a.cost / a.conv : null;
+    case 'cvr': return a.clicks > 0 ? convOf(a) / a.clicks * 100 : null;
+    case 'cpa': return convOf(a) > 0 ? a.cost / convOf(a) : null;
   }
 }
 
@@ -63,7 +81,14 @@ const params = new URLSearchParams(location.search);
 let state = {
   metric: METRICS[params.get('m')] ? params.get('m') : 'clicks',
   norm: params.get('norm') === '1' && HAS_DAY_COUNTS,
+  action: null, // null=合計CV、それ以外はアクション名（RAWのキー）
 };
+{
+  const cvParam = params.get('cv');
+  if (cvParam) {
+    state.action = ACTIONS.find(k => k === cvParam || ACTION_LABEL(k) === cvParam) || null;
+  }
+}
 const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 
 // sequential blue ramp（100→700）。ダークは暗→明で「多いほど明るく」
@@ -102,15 +127,16 @@ function moveTip(evt) {
 function hideTip() { tipEl.classList.remove('show'); }
 
 function cellTipRows(a, emKey) {
+  const cv = convOf(a);
   return [
     ['表示回数', fmtInt(a.imp), emKey === 'imp'],
     ['クリック数', fmtInt(a.clicks), emKey === 'clicks'],
     ['費用', fmtYen(a.cost), emKey === 'cost'],
-    ['CV', fmtDec(a.conv), emKey === 'conv'],
+    [state.action ? `CV（${ACTION_LABEL(state.action)}）` : 'CV', fmtDec(cv), emKey === 'conv'],
     ['CTR', a.imp > 0 ? fmtPct(a.clicks / a.imp * 100) : '—', emKey === 'ctr'],
     ['CPC', a.clicks > 0 ? fmtYen(a.cost / a.clicks) : '—', emKey === 'cpc'],
-    ['CVR', a.clicks > 0 ? fmtPct(a.conv / a.clicks * 100) : '—', emKey === 'cvr'],
-    ['CPA', a.conv > 0 ? fmtYen(a.cost / a.conv) : '—', emKey === 'cpa'],
+    ['CVR', a.clicks > 0 ? fmtPct(cv / a.clicks * 100) : '—', emKey === 'cvr'],
+    ['CPA', cv > 0 ? fmtYen(a.cost / cv) : '—', emKey === 'cpa'],
   ];
 }
 
@@ -152,15 +178,16 @@ function quantile(sorted, q) {
 function renderKPI() {
   const row = document.getElementById('kpiRow');
   row.textContent = '';
+  const cv = convOf(TOTAL);
   const tiles = [
     ['表示回数', fmtInt(TOTAL.imp)],
     ['クリック数', fmtInt(TOTAL.clicks)],
     ['費用', fmtYen(TOTAL.cost)],
-    ['コンバージョン', fmtDec(TOTAL.conv)],
+    [metricLabel('conv'), fmtDec(cv)],
     ['CTR', TOTAL.imp > 0 ? fmtPct(TOTAL.clicks / TOTAL.imp * 100) : '—'],
     ['CPC', TOTAL.clicks > 0 ? fmtYen(TOTAL.cost / TOTAL.clicks) : '—'],
-    ['CVR', TOTAL.clicks > 0 ? fmtPct(TOTAL.conv / TOTAL.clicks * 100) : '—'],
-    ['CPA', TOTAL.conv > 0 ? fmtYen(TOTAL.cost / TOTAL.conv) : '—'],
+    [metricLabel('cvr'), TOTAL.clicks > 0 ? fmtPct(cv / TOTAL.clicks * 100) : '—'],
+    [metricLabel('cpa'), cv > 0 ? fmtYen(TOTAL.cost / cv) : '—'],
   ];
   tiles.forEach(([label, value]) => {
     const t = document.createElement('div');
@@ -199,7 +226,7 @@ function renderHeatmap() {
   const key = state.metric, m = METRICS[key];
   const norm = state.norm && m.sum;
   document.getElementById('heatmapTitle').textContent =
-    `曜日 × 時間帯 ヒートマップ｜${m.label}${norm ? '（1日あたり）' : ''}`;
+    `曜日 × 時間帯 ヒートマップ｜${metricLabel(key)}${norm ? '（1日あたり）' : ''}`;
 
   // 値の収集
   const vals = [];
@@ -283,7 +310,7 @@ function renderHourly() {
   const key = state.metric, m = METRICS[key];
   const norm = state.norm && m.sum;
   document.getElementById('hourlyTitle').textContent =
-    `時間帯別 ${m.label}${norm ? '（1日あたり平均）' : ''}`;
+    `時間帯別 ${metricLabel(key)}${norm ? '（1日あたり平均）' : ''}`;
 
   const values = hourAgg.map(a => {
     let v = metricOf(a, key);
@@ -339,7 +366,7 @@ function renderHourly() {
     hit.addEventListener('pointerenter', e => {
       bar.style.opacity = '0.75';
       showTip(e, `${h}時台（全曜日${norm ? '・1日あたり' : '合計'}）`,
-        [[m.label, m.fmt(v), true], ...cellTipRows(a, key).filter(r => r[0] !== m.label)]);
+        [[metricLabel(key), m.fmt(v), true], ...cellTipRows(a, key).filter(r => r[0] !== m.label)]);
     });
     hit.addEventListener('pointermove', moveTip);
     hit.addEventListener('pointerleave', () => { bar.style.opacity = '1'; hideTip(); });
@@ -353,7 +380,7 @@ function renderDaily() {
   const key = state.metric, m = METRICS[key];
   const norm = state.norm && m.sum;
   document.getElementById('dailyTitle').textContent =
-    `曜日別 ${m.label}${norm ? '（1日あたり平均）' : ''}`;
+    `曜日別 ${metricLabel(key)}${norm ? '（1日あたり平均）' : ''}`;
   document.getElementById('dailySub').textContent = norm
     ? '全時間帯の合計を曜日の日数で割った平均'
     : '全時間帯の合計を曜日別に集計';
@@ -398,7 +425,7 @@ function renderDaily() {
     hit.addEventListener('pointerenter', e => {
       bar.style.opacity = '0.75';
       showTip(e, HAS_DAY_COUNTS ? `${d}（${RAW.dayCounts[d]}日間${norm ? '・1日あたり' : 'の合計'}）` : `${d}（合計）`,
-        [[m.label, m.fmt(v), true], ...cellTipRows(a, key).filter(r => r[0] !== m.label)]);
+        [[metricLabel(key), m.fmt(v), true], ...cellTipRows(a, key).filter(r => r[0] !== m.label)]);
     });
     hit.addEventListener('pointermove', moveTip);
     hit.addEventListener('pointerleave', () => { bar.style.opacity = '1'; hideTip(); });
@@ -409,14 +436,9 @@ function renderDaily() {
 
 /* ================= CV内訳チャート ================= */
 function renderCV() {
-  const totals = {};
-  RAW.rows.forEach(r => {
-    Object.entries(r.actions).forEach(([k, v]) => { totals[k] = (totals[k] || 0) + v; });
-  });
-  const items = Object.entries(totals)
+  const items = Object.entries(TOTAL.actions)
     .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => [k.replace(/（Lad追加金額）|（Lad）|（アフピル）/g, ''), v]);
+    .sort((a, b) => b[1] - a[1]);
   const box = document.getElementById('cvChart');
   box.textContent = '';
   if (items.length === 0) {
@@ -434,21 +456,34 @@ function renderCV() {
   svg.appendChild(svgEl('line', { x1: mL, x2: mL, y1: 4, y2: H - 6, 'stroke-width': 1 },
     { stroke: 'var(--baseline)' }));
 
-  items.forEach(([name, v], i) => {
+  items.forEach(([rawKey, v], i) => {
     const rowY = 6 + i * rowH, barH = 20;
+    // 絞り込み中は選択中のアクション以外を薄く表示
+    const dimmed = state.action && state.action !== rawKey;
     const lab = svgEl('text', { x: mL - 8, y: rowY + barH / 2 + 4, 'text-anchor': 'end', 'font-size': 11.5 },
-      { fill: 'var(--text-secondary)' });
-    lab.textContent = name;
+      { fill: dimmed ? 'var(--text-muted)' : 'var(--text-secondary)' });
+    lab.textContent = ACTION_LABEL(rawKey);
     svg.appendChild(lab);
 
     const w = Math.max(plotW * (v / max), 2);
     svg.appendChild(svgEl('path', { d: roundedBarPath(mL, rowY, w, barH, 4, true) },
-      { fill: 'var(--series-1)' }));
+      { fill: 'var(--series-1)', opacity: dimmed ? '0.3' : '1' }));
 
     const t = svgEl('text', { x: mL + w + 7, y: rowY + barH / 2 + 4, 'font-size': 11.5, 'font-weight': 600 },
-      { fill: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' });
+      { fill: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', opacity: dimmed ? '0.45' : '1' });
     t.textContent = fmtDec(v);
     svg.appendChild(t);
+
+    // 行クリックでそのアクションに絞り込み（もう一度クリックで解除）
+    const hit = svgEl('rect', { x: 0, y: rowY - 3, width: W, height: barH + 6, fill: 'transparent' },
+      { cursor: 'pointer' });
+    hit.addEventListener('click', () => {
+      state.action = state.action === rawKey ? null : rawKey;
+      const sel = document.getElementById('actionSelect');
+      if (sel) sel.value = state.action || '';
+      renderAll();
+    });
+    svg.appendChild(hit);
   });
   box.appendChild(svg);
 }
@@ -457,7 +492,8 @@ function renderCV() {
 function renderTable() {
   const table = document.getElementById('dataTable');
   table.textContent = '';
-  const cols = ['曜日', '時間帯', '表示回数', 'クリック数', '費用', 'CV', 'CTR', 'CPC', 'CVR', 'CPA'];
+  const cols = ['曜日', '時間帯', '表示回数', 'クリック数', '費用',
+    state.action ? `CV（${ACTION_LABEL(state.action)}）` : 'CV', 'CTR', 'CPC', 'CVR', 'CPA'];
   const thead = document.createElement('thead');
   const hr = document.createElement('tr');
   cols.forEach(c => { const th = document.createElement('th'); th.textContent = c; hr.appendChild(th); });
@@ -467,14 +503,15 @@ function renderTable() {
   const tbody = document.createElement('tbody');
   DAYS.forEach(d => HOURS.forEach(h => {
     const a = cell[d][h];
+    const cv = convOf(a);
     const tr = document.createElement('tr');
     const vals = [
       d.replace('曜日', ''), `${h}時台`,
-      fmtInt(a.imp), fmtInt(a.clicks), fmtYen(a.cost), fmtDec(a.conv),
+      fmtInt(a.imp), fmtInt(a.clicks), fmtYen(a.cost), fmtDec(cv),
       a.imp > 0 ? fmtPct(a.clicks / a.imp * 100) : '—',
       a.clicks > 0 ? fmtYen(a.cost / a.clicks) : '—',
-      a.clicks > 0 ? fmtPct(a.conv / a.clicks * 100) : '—',
-      a.conv > 0 ? fmtYen(a.cost / a.conv) : '—',
+      a.clicks > 0 ? fmtPct(cv / a.clicks * 100) : '—',
+      cv > 0 ? fmtYen(a.cost / cv) : '—',
     ];
     vals.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
     tbody.appendChild(tr);
@@ -499,6 +536,12 @@ function renderInsights() {
     arr.forEach((v, i) => { if (v !== null && (idx < 0 || better(v, arr[idx]))) idx = i; });
     return idx;
   };
+
+  // 0) CVアクション絞り込み中の注記
+  if (state.action) {
+    add(`CVアクション「${ACTION_LABEL(state.action)}」で絞り込み中。`,
+      'CV・CVR・CPAはこのアクションのみで計算しています。');
+  }
 
   // 1) クリック数のピーク時間帯
   const clk = hourAgg.map(a => a.clicks);
@@ -546,11 +589,42 @@ function renderInsights() {
   }
 }
 
+/* ================= CVアクションセレクター ================= */
+function renderActionSelect() {
+  const wrap = document.getElementById('actionSelectWrap');
+  if (!wrap) return;
+  if (ACTIONS.length === 0) { wrap.style.display = 'none'; return; }
+  const sel = document.getElementById('actionSelect');
+  sel.textContent = '';
+  const optAll = document.createElement('option');
+  optAll.value = '';
+  optAll.textContent = 'すべて（合計CV）';
+  sel.appendChild(optAll);
+  ACTIONS.forEach(k => {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = ACTION_LABEL(k);
+    sel.appendChild(o);
+  });
+  sel.value = state.action || '';
+  sel.addEventListener('change', () => {
+    state.action = sel.value || null;
+    renderAll();
+  });
+}
+
 /* ================= 初期化 ================= */
 function renderCharts() {
   renderHeatmap();
   renderHourly();
   renderDaily();
+}
+function renderAll() {
+  renderKPI();
+  renderCharts();
+  renderCV();
+  renderInsights();
+  renderTable();
 }
 document.getElementById('period').textContent = '集計期間: ' + RAW.period;
 if (RAW.source) {
@@ -563,9 +637,6 @@ document.getElementById('normCheck').addEventListener('change', e => {
 });
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderCharts);
 
-renderKPI();
 renderSwitch();
-renderCharts();
-renderCV();
-renderInsights();
-renderTable();
+renderActionSelect();
+renderAll();

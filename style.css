@@ -94,6 +94,24 @@ main { max-width: 1160px; margin: 0 auto; }
   color: #fff;
   font-weight: 600;
 }
+.action-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.action-select select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  max-width: 240px;
+}
 .norm-toggle {
   display: inline-flex;
   align-items: center;

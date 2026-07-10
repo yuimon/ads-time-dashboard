@@ -22,6 +22,10 @@
   <!-- フィルター行 -->
   <div class="controls-row">
     <div class="metric-switch" id="metricSwitch" role="tablist" aria-label="指標の切り替え"></div>
+    <label class="action-select" id="actionSelectWrap">
+      <span>CVアクション</span>
+      <select id="actionSelect" aria-label="CVアクションで絞り込み"></select>
+    </label>
     <label class="norm-toggle" id="normToggle">
       <input type="checkbox" id="normCheck">
       <span>1日あたり平均で表示<small>（水・木曜のみ8日間のため補正）</small></span>
@@ -56,7 +60,7 @@
     <!-- CV内訳 -->
     <section class="card">
       <h2>コンバージョン内訳（主要アクション）</h2>
-      <p class="card-sub">レポートの内訳列より。合計CVにはscroll_depth等のマイクロCVも含まれるため、内訳の合計とは一致しません</p>
+      <p class="card-sub">レポートの内訳列より。行をクリックするとそのアクションに絞り込めます（合計CVにはscroll_depth等のマイクロCVも含まれるため、内訳の合計とは一致しません）</p>
       <div id="cvChart"></div>
     </section>
 
